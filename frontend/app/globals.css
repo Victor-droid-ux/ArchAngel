@@ -1,0 +1,153 @@
+/* globals.css — place in frontend/app/globals.css */
+
+/* 1) Import Inter font (fallbacks included). If you're using next/font, comment this out. */
+/* @import url("https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;800&family=Roboto+Mono:wght@400;700&display=swap"); */
+
+/* 2) Tailwind directives */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* 3) Theme variables (tweak these to taste) */
+:root {
+  --bg: #0b0c0e;            /* page background */
+  --panel: #0f1113;         /* card/panel background */
+  --muted: #9aa3b2;         /* muted text */
+  --accent: #00c853;        /* positive accent (green) */
+  --danger: #ff6b6b;        /* negative accent (red) */
+  --glass: rgba(255,255,255,0.03);
+  --card-border: rgba(255,255,255,0.04);
+  --glass-2: rgba(255,255,255,0.02);
+  --code-bg: #0a0b0c;
+}
+
+/* 4) Base element styles */
+html, body, #__next {
+  height: 100%;
+}
+
+body {
+  font-family: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background: linear-gradient(180deg, var(--bg) 0%, #060607 100%);
+  color: #e6eef6;
+  line-height: 1.45;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Links */
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+/* Headings */
+h1, h2, h3, h4 {
+  color: #ffffff;
+  margin: 0;
+  line-height: 1.15;
+}
+
+/* 5) Card defaults (works with your Card component) */
+.card {
+  background: var(--panel);
+  border: 1px solid var(--card-border);
+  border-radius: 12px;
+  padding: 1rem;
+  box-shadow: 0 6px 18px rgba(2,6,23,0.6);
+}
+
+/* Utility classes for small subtle surfaces */
+.surface {
+  background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));
+  border: 1px solid var(--glass-2);
+  border-radius: 10px;
+}
+
+/* 6) Input / select tweaks for consistent look (DaisyUI or plain tailwind can override) */
+input[type="text"], input[type="number"], .input, .select, textarea {
+  background: rgba(255,255,255,0.02);
+  border: 1px solid var(--card-border);
+  color: #e6eef6;
+  padding: 0.5rem 0.75rem;
+  border-radius: 8px;
+  outline: none;
+}
+
+input:focus, .select:focus, textarea:focus {
+  box-shadow: 0 0 0 4px rgba(0,200,83,0.06);
+  border-color: rgba(0,200,83,0.3);
+}
+
+/* 7) Buttons (base) — your Button component adds classes, these are fallbacks */
+.btn {
+  border-radius: 10px;
+  padding: 0.6rem 1rem;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+}
+
+/* Primary / secondary / danger (used if you choose to rely on utility classes) */
+.btn-primary { background: #00b14f; color: white; }
+.btn-secondary { background: rgba(255,255,255,0.03); color: #e6eef6; border: 1px solid var(--card-border); }
+.btn-danger { background: var(--danger); color: white; }
+
+/* 8) Monospace feed styling */
+.live-feed, .log-list {
+  font-family: "Roboto Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, "Courier New", monospace;
+  font-size: 0.92rem;
+  color: #d7e6f4;
+}
+
+.log-item {
+  padding: 0.5rem;
+  border-radius: 8px;
+  margin-bottom: 0.35rem;
+}
+
+/* Feed colors */
+.log-info { background: rgba(255,255,255,0.02); color: #bcd0e6; }
+.log-buy { background: rgba(0,200,83,0.06); color: var(--accent); }
+.log-sell { background: rgba(255,107,107,0.06); color: var(--danger); }
+
+/* 9) Table defaults to match design */
+.table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.table th, .table td {
+  padding: 0.65rem 0.5rem;
+  border-bottom: 1px solid var(--card-border);
+}
+.table th { color: var(--muted); font-weight: 600; font-size: 0.85rem; text-align: left; }
+
+/* 10) Nice subtle scrollbar */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0.06));
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+.scrollbar-thin { scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.06) transparent; }
+
+/* 11) Responsive helpers (small screens) */
+@media (max-width: 768px) {
+  .card { padding: 0.75rem; border-radius: 10px; }
+  .table th, .table td { padding: 0.5rem 0.35rem; font-size: 0.9rem; }
+}
+
+/* 12) Tiny helpers */
+.kicker { font-size: 0.8rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
+.muted { color: var(--muted); }
+
+/* 13) Utility to apply accent outline (useful for focused controls) */
+.outline-accent {
+  box-shadow: 0 0 0 4px rgba(0,200,83,0.06);
+  border-color: rgba(0,200,83,0.25) !important;
+}
