@@ -9,8 +9,8 @@
 export const ENV = {
   NODE_ENV: process.env.NODE_ENV || "development",
   API_BASE_URL:
-    process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:3000/api",
-  SOCKET_URL: process.env.NEXT_PUBLIC_SOCKET_URL || "http://localhost:3001", // backend socket server
+    process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:4000/api",
+  SOCKET_URL: process.env.NEXT_PUBLIC_SOCKET_URL || "http://localhost:4000", // backend socket server
   SOLANA_RPC_URL:
     process.env.NEXT_PUBLIC_SOLANA_RPC || "https://api.mainnet-beta.solana.com",
 };

@@ -55,6 +55,9 @@ export function useSocket() {
     socket.on("raydium:pool_detected", (data) =>
       setLastMessage({ event: "raydium:pool_detected", payload: data })
     );
+    socket.on("raydium:pool_skipped", (data) =>
+      setLastMessage({ event: "raydium:pool_skipped", payload: data })
+    );
     socket.on("raydium:validation_passed", (data) =>
       setLastMessage({ event: "raydium:validation_passed", payload: data })
     );
@@ -76,6 +79,14 @@ export function useSocket() {
     // P&L Tracking Events
     socket.on("pnl:update", (data) =>
       setLastMessage({ event: "pnl:update", payload: data })
+    );
+
+    // Stored Token Checker Events
+    socket.on("storedTokenChecker:status", (data) =>
+      setLastMessage({ event: "storedTokenChecker:status", payload: data })
+    );
+    socket.on("storedTokenChecker:qualified", (data) =>
+      setLastMessage({ event: "storedTokenChecker:qualified", payload: data })
     );
 
     return () => {

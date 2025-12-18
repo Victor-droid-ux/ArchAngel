@@ -15,12 +15,13 @@ import { TokenConfigModal } from "@components/trading/token-config-modal";
 interface Token {
   symbol: string;
   mint: string;
-  price: number;
-  pnl: number;
+  price?: number;
+  priceSol?: number;
+  pnl?: number;
+  priceChange24h?: number;
   liquidity?: number;
   marketCap?: number;
   marketCapSol?: number;
-  priceSol?: number;
   name?: string;
   holderCount?: number; // Number of unique holders (0-5 for newly launched)
   // Lifecycle validation fields
@@ -61,10 +62,12 @@ export const NewTokens = () => {
 
     for (const t of incoming) {
       const prevTok = prev.current[t.symbol];
+      const currentPrice = t.price || t.priceSol || 0;
+      const prevPrice = prevTok ? prevTok.price || prevTok.priceSol || 0 : 0;
 
-      if (prevTok) {
-        if (t.price > prevTok.price) flashMap[t.symbol] = "up";
-        else if (t.price < prevTok.price) flashMap[t.symbol] = "down";
+      if (prevTok && currentPrice && prevPrice) {
+        if (currentPrice > prevPrice) flashMap[t.symbol] = "up";
+        else if (currentPrice < prevPrice) flashMap[t.symbol] = "down";
       }
 
       prev.current[t.symbol] = t;
@@ -109,128 +112,146 @@ export const NewTokens = () => {
         )}
       </CardHeader>
 
-      <CardContent>
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-base-300 text-gray-400">
-              <th className="text-left py-2">Token</th>
-              <th className="text-right py-2">Holders</th>
-              <th className="text-right py-2">Price</th>
-              <th className="text-right py-2">24h</th>
-              <th className="text-right py-2">Liquidity</th>
-              <th className="text-right py-2">MCap</th>
-              <th className="text-center py-2">Action</th>
-            </tr>
-          </thead>
-
-          <tbody>
-            {tokens.map((t) => (
-              <tr
-                key={t.mint}
-                className="border-b border-base-300 hover:bg-base-300/20"
-              >
-                <td className="py-2 font-medium">
-                  <div className="flex items-center gap-2">
-                    <span>{t.symbol}</span>
-                    {t.holderCount !== undefined && t.holderCount <= 5 && (
-                      <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
-                        ✨ NEW
-                      </span>
-                    )}
-                    {t.lifecycleValidated && (
-                      <span
-                        className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
-                          t.isTradable
-                            ? t.lifecycleStage === "pump_fun_bonding"
-                              ? "bg-orange-100 text-orange-800"
-                              : "bg-green-100 text-green-800"
-                            : "bg-red-100 text-red-800"
-                        }`}
-                        title={`Stage: ${t.lifecycleStage}`}
-                      >
-                        {t.isTradable
-                          ? t.lifecycleStage === "pump_fun_bonding"
-                            ? "🔥 Pump.fun"
-                            : "✅ Raydium"
-                          : "⚠️ Not Tradable"}
-                      </span>
-                    )}
-                  </div>
-                </td>
-
-                <td className="py-2 text-right">
-                  {t.holderCount !== undefined ? (
-                    <span
-                      className={`font-semibold ${
-                        t.holderCount <= 2
-                          ? "text-green-400"
-                          : t.holderCount <= 5
-                          ? "text-yellow-400"
-                          : "text-gray-400"
-                      }`}
-                    >
-                      {t.holderCount}
-                    </span>
-                  ) : (
-                    <span className="text-gray-500">-</span>
-                  )}
-                </td>
-
-                <td
-                  className={`py-2 text-right ${
-                    flash[t.symbol] === "up"
-                      ? "bg-green-500/30"
-                      : flash[t.symbol] === "down"
-                      ? "bg-red-500/30"
-                      : ""
-                  }`}
-                >
-                  {formatNumber(t.price)}
-                </td>
-
-                <td
-                  className={`py-2 text-right ${
-                    t.pnl >= 0 ? "text-green-400" : "text-red-400"
-                  }`}
-                >
-                  {(t.pnl >= 0 ? "+" : "") + t.pnl}%
-                </td>
-
-                <td className="py-2 text-right">
-                  {formatNumber(t.liquidity || 0)}
-                </td>
-                <td className="py-2 text-right">
-                  {formatNumber(t.marketCap || 0)}
-                </td>
-
-                <td className="py-2 text-center">
-                  <button
-                    onClick={() => {
-                      setSelectedToken(t);
-                      setIsConfigModalOpen(true);
-                    }}
-                    disabled={t.lifecycleValidated && !t.isTradable}
-                    className={`inline-flex items-center gap-1 px-3 py-1 text-xs rounded-lg transition-colors ${
-                      t.lifecycleValidated && !t.isTradable
-                        ? "bg-gray-600 cursor-not-allowed opacity-50"
-                        : "bg-purple-600 hover:bg-purple-500 text-white"
-                    }`}
-                    title={
-                      t.lifecycleValidated && !t.isTradable
-                        ? `Not tradable - ${t.lifecycleStage}`
-                        : "Configure trade for this token"
-                    }
-                  >
-                    <Settings2 className="w-3 h-3" />
-                    {t.lifecycleValidated && !t.isTradable
-                      ? "Unavailable"
-                      : "Configure"}
-                  </button>
-                </td>
+      <CardContent className="p-0">
+        <div className="max-h-[600px] overflow-y-auto">
+          <table className="w-full text-sm">
+            <thead className="sticky top-0 bg-base-200 z-10">
+              <tr className="border-b border-base-300 text-gray-400">
+                <th className="text-left py-2 px-4">Token</th>
+                <th className="text-right py-2 px-4">Holders</th>
+                <th className="text-right py-2 px-4">Price</th>
+                <th className="text-right py-2 px-4">24h</th>
+                <th className="text-right py-2 px-4">Liquidity</th>
+                <th className="text-right py-2 px-4">MCap</th>
+                <th className="text-center py-2 px-4">Action</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+
+            <tbody>
+              {tokens.map((t) => (
+                <tr
+                  key={t.mint}
+                  className="border-b border-base-300 hover:bg-base-300/20"
+                >
+                  <td className="py-2 px-4 font-medium">
+                    <div className="flex items-center gap-2">
+                      <span>{t.symbol}</span>
+                      {t.holderCount !== undefined && t.holderCount <= 5 && (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
+                          ✨ NEW
+                        </span>
+                      )}
+                      {t.lifecycleValidated && (
+                        <span
+                          className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
+                            t.isTradable
+                              ? t.lifecycleStage === "pump_fun_bonding"
+                                ? "bg-orange-100 text-orange-800"
+                                : "bg-green-100 text-green-800"
+                              : "bg-red-100 text-red-800"
+                          }`}
+                          title={`Stage: ${t.lifecycleStage}`}
+                        >
+                          {t.isTradable
+                            ? t.lifecycleStage === "pump_fun_bonding"
+                              ? "🔥 Pump.fun"
+                              : "✅ Raydium"
+                            : "⚠️ Not Tradable"}
+                        </span>
+                      )}
+                    </div>
+                  </td>
+
+                  <td className="py-2 px-4 text-right">
+                    {t.holderCount !== undefined ? (
+                      <span
+                        className={`font-semibold ${
+                          t.holderCount <= 2
+                            ? "text-green-400"
+                            : t.holderCount <= 5
+                            ? "text-yellow-400"
+                            : "text-gray-400"
+                        }`}
+                      >
+                        {t.holderCount}
+                      </span>
+                    ) : (
+                      <span className="text-gray-500">-</span>
+                    )}
+                  </td>
+
+                  <td
+                    className={`py-2 px-4 text-right ${
+                      flash[t.symbol] === "up"
+                        ? "bg-green-500/30"
+                        : flash[t.symbol] === "down"
+                        ? "bg-red-500/30"
+                        : ""
+                    }`}
+                  >
+                    {t.price
+                      ? formatNumber(t.price)
+                      : t.priceSol
+                      ? `${t.priceSol.toFixed(8)} SOL`
+                      : "-"}
+                  </td>
+
+                  <td
+                    className={`py-2 px-4 text-right ${
+                      (t.pnl || t.priceChange24h || 0) >= 0
+                        ? "text-green-400"
+                        : "text-red-400"
+                    }`}
+                  >
+                    {t.pnl !== undefined
+                      ? `${t.pnl >= 0 ? "+" : ""}${t.pnl.toFixed(2)}%`
+                      : t.priceChange24h !== undefined
+                      ? `${
+                          t.priceChange24h >= 0 ? "+" : ""
+                        }${t.priceChange24h.toFixed(2)}%`
+                      : "-"}
+                  </td>
+
+                  <td className="py-2 px-4 text-right">
+                    {t.liquidity ? `$${formatNumber(t.liquidity)}` : "-"}
+                  </td>
+                  <td className="py-2 px-4 text-right">
+                    {t.marketCap
+                      ? `$${formatNumber(t.marketCap)}`
+                      : t.marketCapSol
+                      ? `${t.marketCapSol.toFixed(2)} SOL`
+                      : "-"}
+                  </td>
+
+                  <td className="py-2 px-4 text-center">
+                    <button
+                      onClick={() => {
+                        setSelectedToken(t);
+                        setIsConfigModalOpen(true);
+                      }}
+                      disabled={t.lifecycleValidated && !t.isTradable}
+                      className={`inline-flex items-center gap-1 px-3 py-1 text-xs rounded-lg transition-colors ${
+                        t.lifecycleValidated && !t.isTradable
+                          ? "bg-gray-600 cursor-not-allowed opacity-50"
+                          : "bg-purple-600 hover:bg-purple-500 text-white"
+                      }`}
+                      title={
+                        t.lifecycleValidated && !t.isTradable
+                          ? `Not tradable - ${t.lifecycleStage}`
+                          : "Configure trade for this token"
+                      }
+                    >
+                      <Settings2 className="w-3 h-3" />
+                      {t.lifecycleValidated && !t.isTradable
+                        ? "Unavailable"
+                        : "Configure"}
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </CardContent>
 
       {/* Token Config Modal */}

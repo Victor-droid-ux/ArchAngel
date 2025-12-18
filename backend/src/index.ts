@@ -33,6 +33,7 @@ import adminRoutes from "./routes/admin.route.js";
 import userRoutes from "./routes/user.route.js";
 import { ENV } from "./utils/env.js";
 import { raydiumPoolListener } from "./services/raydiumPoolListener.service.js";
+import storedTokenChecker from "./services/storedTokenChecker.service.js";
 
 const log = getLogger("index");
 
@@ -118,6 +119,13 @@ const log = getLogger("index");
       log.error(`Failed to start Raydium pool listener: ${err.message}`);
     });
     log.info("🎧 Raydium pool listener enabled with real-time events");
+  }
+
+  // Start stored token checker for periodic re-evaluation
+  if (process.env.STORED_TOKEN_CHECKER_ENABLED === "true") {
+    storedTokenChecker.setSocketIO(io);
+    storedTokenChecker.start();
+    log.info("🔍 Stored token checker enabled");
   }
 
   server.listen(ENV.PORT, () => {

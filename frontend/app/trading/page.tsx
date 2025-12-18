@@ -24,6 +24,7 @@ import { Settings } from "lucide-react";
 import { useSocket } from "@hooks/useSocket";
 import { toast } from "react-hot-toast";
 import { EmergencyAlert } from "@components/trading/EmergencyAlert";
+import { StoredTokenCheckerStatus } from "@components/trading/StoredTokenCheckerStatus";
 
 const fadeIn = (delay = 0) => ({
   initial: { opacity: 0, y: 20 },
@@ -127,6 +128,9 @@ export default function TradingDashboard() {
 
           {/* Validation Status Panel - NEW */}
           {selectedToken && <ValidationStatus validation={validation} />}
+
+          {/* Stored Token Checker Status */}
+          <StoredTokenCheckerStatus />
 
           {/* Risk Management Panel */}
           <RiskManagementPanel />

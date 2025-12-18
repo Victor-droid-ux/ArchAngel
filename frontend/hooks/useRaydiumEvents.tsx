@@ -7,6 +7,21 @@ export interface RaydiumPoolEvent {
   tokenMint: string;
   poolId: string;
   liquiditySol: number;
+  queueSize?: number;
+  activeValidations?: number;
+  meetsLiquidityThreshold?: boolean;
+  timestamp: string;
+}
+
+export interface RaydiumPoolSkippedEvent {
+  tokenMint: string;
+  poolId: string;
+  reason: string;
+  liquiditySol?: number;
+  requiredSol?: number;
+  ageMinutes?: string;
+  maxAgeMinutes?: string;
+  previousState?: string;
   timestamp: string;
 }
 
@@ -69,6 +84,9 @@ export interface PnLUpdate {
 export function useRaydiumEvents() {
   const { lastMessage, connected } = useSocket();
   const [poolsDetected, setPoolsDetected] = useState<RaydiumPoolEvent[]>([]);
+  const [poolsSkipped, setPoolsSkipped] = useState<RaydiumPoolSkippedEvent[]>(
+    []
+  );
   const [validationsPassed, setValidationsPassed] = useState<
     RaydiumValidationEvent[]
   >([]);
@@ -94,6 +112,10 @@ export function useRaydiumEvents() {
     switch (lastMessage.event) {
       case "raydium:pool_detected":
         setPoolsDetected((prev) => [lastMessage.payload, ...prev].slice(0, 50));
+        break;
+
+      case "raydium:pool_skipped":
+        setPoolsSkipped((prev) => [lastMessage.payload, ...prev].slice(0, 100));
         break;
 
       case "raydium:validation_passed":
@@ -139,6 +161,7 @@ export function useRaydiumEvents() {
   return {
     connected,
     poolsDetected,
+    poolsSkipped,
     validationsPassed,
     validationsFailed,
     autoBuyResults,
@@ -149,5 +172,10 @@ export function useRaydiumEvents() {
     latestAutoBuy: autoBuyResults[0],
     latestPipelineSuccess: pipelineSuccess[0],
     latestPipelineFailed: pipelineFailed[0],
+    totalPoolsSkipped: poolsSkipped.length,
+    skipReasons: poolsSkipped.reduce((acc, skip) => {
+      acc[skip.reason] = (acc[skip.reason] || 0) + 1;
+      return acc;
+    }, {} as Record<string, number>),
   };
 }

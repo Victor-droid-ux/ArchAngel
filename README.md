@@ -2,6 +2,20 @@
 
 A sophisticated Solana trading bot with automated token discovery, validation pipeline, and risk management features for trading on Raydium and Pump.fun.
 
+## 🖥️ Desktop App Available!
+
+**ArchAngel is now available as a standalone desktop application!**
+
+- ✅ One-click `.exe` installer for Windows
+- ✅ No terminal or Node.js installation required
+- ✅ Backend and frontend run automatically
+- ✅ System tray integration
+- ✅ Clean desktop GUI
+
+👉 **See [DESKTOP_APP_BUILD.md](DESKTOP_APP_BUILD.md) for build instructions**
+
+---
+
 ## Features
 
 - 🤖 **Automated Trading**: Auto-buy newly graduated tokens from Pump.fun to Raydium

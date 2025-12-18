@@ -54,3 +54,14 @@ out/
 
 # Misc
 .cache/
+
+# Electron build output
+dist-electron/
+*.exe
+*.dmg
+*.AppImage
+*.deb
+*.rpm
+
+# Electron builder
+electron-builder.yml

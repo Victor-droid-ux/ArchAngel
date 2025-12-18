@@ -711,6 +711,35 @@ export async function getTokensByState(
   return await tokenStateCol!.find({ state }).sort({ updatedAt: -1 }).toArray();
 }
 
+export async function getTokensByStates(
+  states: TokenLifecycleState[],
+  options?: {
+    limit?: number;
+    minCreatedAt?: Date;
+    hasRaydiumPool?: boolean;
+  }
+): Promise<TokenState[]> {
+  if (!db) await connect();
+
+  const filter: any = { state: { $in: states } };
+
+  if (options?.minCreatedAt) {
+    filter.detectedAt = { $gte: options.minCreatedAt };
+  }
+
+  if (options?.hasRaydiumPool) {
+    filter.poolAddress = { $exists: true, $ne: null };
+  }
+
+  let query = tokenStateCol!.find(filter).sort({ updatedAt: -1 });
+
+  if (options?.limit) {
+    query = query.limit(options.limit);
+  }
+
+  return await query.toArray();
+}
+
 export async function updateTokenState(
   mint: string,
   updates: Partial<Omit<TokenState, "_id" | "mint">>
@@ -770,6 +799,7 @@ export default {
   upsertTokenState,
   getTokenState,
   getTokensByState,
+  getTokensByStates,
   updateTokenState,
   blacklistToken,
   close,

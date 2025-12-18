@@ -40,9 +40,9 @@ class RaydiumPoolListener {
     timestamp: number;
   }> = [];
   private isProcessing: boolean = false;
-  private readonly MAX_QUEUE_SIZE = 200; // Increased to handle burst
-  private readonly PROCESS_INTERVAL_MS = 500; // Ultra-fast: 0.5 seconds
-  private readonly CONCURRENT_VALIDATIONS = 5; // Process 5 pools in parallel
+  private readonly MAX_QUEUE_SIZE = 50; // Reduced from 200 - only keep freshest pools
+  private readonly PROCESS_INTERVAL_MS = 200; // Faster: 0.2 seconds
+  private readonly CONCURRENT_VALIDATIONS = 3; // Process 3 pools in parallel (reduced from 5)
   private activeValidations = 0;
 
   constructor() {
@@ -280,12 +280,120 @@ class RaydiumPoolListener {
         return;
       }
 
-      // Skip if already detected
+      // Skip if already detected in this session
       if (this.detectedPools.has(poolInfo.poolId)) {
         return;
       }
 
       this.detectedPools.add(poolInfo.poolId);
+
+      // **ALWAYS SAVE TOKEN TO DATABASE FIRST**
+      // This ensures we capture ALL pools for later re-evaluation
+      const blockTime = tx.blockTime;
+      const poolAgeSeconds = blockTime ? Date.now() / 1000 - blockTime : 0;
+
+      // Check if token already exists in database
+      const existingToken = await dbService.getTokenState(poolInfo.tokenMint);
+
+      if (!existingToken) {
+        // Save new token to database
+        LOG.debug(
+          {
+            token: poolInfo.tokenMint.slice(0, 8),
+            liquidity: poolInfo.liquiditySol,
+            ageMinutes: (poolAgeSeconds / 60).toFixed(1),
+          },
+          `💾 Saving new token to database`
+        );
+
+        await dbService.upsertTokenState({
+          mint: poolInfo.tokenMint,
+          symbol: "UNKNOWN", // We don't have symbol from pool info
+          name: "Unknown Token", // We don't have name from pool info
+          state: "RAYDIUM_POOL_CREATED",
+          source: "raydium",
+          raydiumPoolExists: true,
+          poolAddress: poolInfo.poolId,
+          liquiditySOL: poolInfo.liquiditySol,
+          detectedAt: new Date(),
+        });
+      } else {
+        LOG.debug(
+          {
+            token: poolInfo.tokenMint.slice(0, 8),
+            state: existingToken.state,
+          },
+          `♻️ Token already exists - skipping immediate processing`
+        );
+
+        // Emit skip event to frontend
+        if (this.io) {
+          this.io.emit("raydium:pool_skipped", {
+            tokenMint: poolInfo.tokenMint,
+            poolId: poolInfo.poolId,
+            reason: "Already processed",
+            previousState: existingToken.state,
+            timestamp: new Date().toISOString(),
+          });
+        }
+        return;
+      }
+
+      // **NOW APPLY FILTERS FOR IMMEDIATE AUTO-TRADE**
+      // Only pools that pass these filters will be validated immediately
+      // Others are saved and will be checked later by storedTokenChecker
+
+      const MIN_TRADEABLE_LIQUIDITY = this.config.minLiquiditySol;
+      if (poolInfo.liquiditySol < MIN_TRADEABLE_LIQUIDITY) {
+        LOG.debug(
+          {
+            token: poolInfo.tokenMint.slice(0, 8),
+            liquidity: poolInfo.liquiditySol,
+            required: MIN_TRADEABLE_LIQUIDITY,
+          },
+          `⏩ Skipping immediate validation - insufficient liquidity (will check later)`
+        );
+
+        // Emit skip event to frontend
+        if (this.io) {
+          this.io.emit("raydium:pool_skipped", {
+            tokenMint: poolInfo.tokenMint,
+            poolId: poolInfo.poolId,
+            reason: "Low liquidity",
+            liquiditySol: poolInfo.liquiditySol,
+            requiredSol: MIN_TRADEABLE_LIQUIDITY,
+            savedForLater: true,
+            timestamp: new Date().toISOString(),
+          });
+        }
+        return;
+      }
+
+      // Filter for fresh pools only (< 5 minutes old)
+      const MAX_POOL_AGE_SECONDS = 300; // 5 minutes
+      if (blockTime && poolAgeSeconds > MAX_POOL_AGE_SECONDS) {
+        LOG.debug(
+          {
+            token: poolInfo.tokenMint.slice(0, 8),
+            ageMinutes: (poolAgeSeconds / 60).toFixed(1),
+          },
+          `⏩ Skipping immediate validation - pool too old (will check later)`
+        );
+
+        // Emit skip event to frontend
+        if (this.io) {
+          this.io.emit("raydium:pool_skipped", {
+            tokenMint: poolInfo.tokenMint,
+            poolId: poolInfo.poolId,
+            reason: "Pool too old",
+            ageMinutes: (poolAgeSeconds / 60).toFixed(1),
+            maxAgeMinutes: (MAX_POOL_AGE_SECONDS / 60).toFixed(0),
+            savedForLater: true,
+            timestamp: new Date().toISOString(),
+          });
+        }
+        return;
+      }
 
       LOG.info(
         {
@@ -295,12 +403,16 @@ class RaydiumPoolListener {
         `🔍 Analyzing pool: ${poolInfo.tokenMint.slice(0, 8)}...`
       );
 
-      // Emit pool detected event to frontend
+      // Emit pool detected event to frontend with enhanced data
       if (this.io) {
         this.io.emit("raydium:pool_detected", {
           tokenMint: poolInfo.tokenMint,
           poolId: poolInfo.poolId,
           liquiditySol: poolInfo.liquiditySol,
+          queueSize: this.poolQueue.length,
+          activeValidations: this.activeValidations,
+          meetsLiquidityThreshold:
+            poolInfo.liquiditySol >= this.config.minLiquiditySol,
           timestamp: new Date().toISOString(),
         });
       }

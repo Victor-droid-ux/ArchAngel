@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { socket } from "@lib/socket";
 import { useWallet } from "./useWallet";
+import { ENV } from "@lib/constant";
 
 export interface TraderConfig {
   walletAddress: string;
@@ -48,7 +49,7 @@ export function useTraderConfig() {
     const walletAddress = publicKey;
 
     setLoading(true);
-    fetch(`/api/trader-config/${walletAddress}`)
+    fetch(`${ENV.API_BASE_URL}/trader-config/${walletAddress}`)
       .then((res) => res.json())
       .then((data) => {
         if (data.success) {
@@ -80,7 +81,7 @@ export function useTraderConfig() {
 
     try {
       const response = await fetch(
-        `/api/trader-config/${walletAddress}/global`,
+        `${ENV.API_BASE_URL}/trader-config/${walletAddress}/global`,
         {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
@@ -111,7 +112,7 @@ export function useTraderConfig() {
 
     try {
       const response = await fetch(
-        `/api/trader-config/${walletAddress}/token/${mint}`,
+        `${ENV.API_BASE_URL}/trader-config/${walletAddress}/token/${mint}`,
         {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
@@ -139,7 +140,7 @@ export function useTraderConfig() {
 
     try {
       const response = await fetch(
-        `/api/trader-config/${walletAddress}/token/${mint}`,
+        `${ENV.API_BASE_URL}/trader-config/${walletAddress}/token/${mint}`,
         {
           method: "DELETE",
         }
@@ -165,7 +166,7 @@ export function useTraderConfig() {
 
     try {
       const response = await fetch(
-        `/api/trader-config/${walletAddress}/effective/${mint}`
+        `${ENV.API_BASE_URL}/trader-config/${walletAddress}/effective/${mint}`
       );
 
       const data = await response.json();
