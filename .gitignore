@@ -28,6 +28,8 @@ Thumbs.db
 # Large config files (these should be generated/downloaded separately)
 backend/config/mainnet.json
 backend/config/*.json
+backend/config/*.zip
+backend/config/*.tar.gz
 
 # Logs
 logs/
