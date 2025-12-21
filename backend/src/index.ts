@@ -62,6 +62,47 @@ const log = getLogger("index");
     res.json({ message: "🚀 ArchAngel Backend Running" })
   );
 
+  // Health check endpoint for Azure
+  app.get("/health", (_, res) => {
+    res.status(200).json({
+      status: "healthy",
+      timestamp: new Date().toISOString(),
+      uptime: process.uptime(),
+      environment: process.env.NODE_ENV || "development",
+    });
+  });
+
+  // Readiness check endpoint
+  app.get("/ready", async (_, res) => {
+    try {
+      // Check database connection
+      const dbConnected = await dbService
+        .connect()
+        .then(() => true)
+        .catch(() => false);
+
+      if (dbConnected) {
+        res.status(200).json({
+          status: "ready",
+          timestamp: new Date().toISOString(),
+          database: "connected",
+        });
+      } else {
+        res.status(503).json({
+          status: "not ready",
+          timestamp: new Date().toISOString(),
+          database: "disconnected",
+        });
+      }
+    } catch (error) {
+      res.status(503).json({
+        status: "not ready",
+        timestamp: new Date().toISOString(),
+        error: "Health check failed",
+      });
+    }
+  });
+
   app.use("/api/trade", tradeRoutes);
   app.use("/api/stats", statsRoutes);
   app.use("/api/tokens", tokensRoutes);

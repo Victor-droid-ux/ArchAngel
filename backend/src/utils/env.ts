@@ -8,8 +8,11 @@ const requireEnv = (k: string) => {
 };
 
 export const ENV = {
-  PORT: process.env.PORT ?? "4000",
-  FRONTEND_URL: process.env.FRONTEND_URL ?? "http://localhost:3000",
+  PORT: process.env.PORT ?? process.env.WEBSITES_PORT ?? "4000",
+  FRONTEND_URL:
+    process.env.FRONTEND_URL ??
+    process.env.AZURE_FRONTEND_URL ??
+    "http://localhost:3000",
 
   // DB
   MONGO_URI: process.env.MONGO_URI ?? "",
