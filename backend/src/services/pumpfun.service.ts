@@ -8,6 +8,7 @@ import {
   LAMPORTS_PER_SOL,
 } from "@solana/web3.js";
 import { getConnection, loadKeypairFromEnv } from "./solana.service.js";
+import { ENV } from "../utils/env.js";
 import { getLogger } from "../utils/logger.js";
 import axios from "axios";
 
@@ -357,9 +358,18 @@ export async function buildPumpFunTransaction(
     const tx = new Transaction();
 
     // Add compute budget instructions
+    // Use ENV.PUMPFUN_PRIORITY_FEE if set, else fallback to 50000 microLamports
+    const pumpfunPriorityFee =
+      ENV.PUMPFUN_PRIORITY_FEE &&
+      !isNaN(ENV.PUMPFUN_PRIORITY_FEE) &&
+      ENV.PUMPFUN_PRIORITY_FEE > 0
+        ? Math.floor(ENV.PUMPFUN_PRIORITY_FEE * LAMPORTS_PER_SOL)
+        : 50000;
     tx.add(
       ComputeBudgetProgram.setComputeUnitLimit({ units: 100000 }),
-      ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 50000 })
+      ComputeBudgetProgram.setComputeUnitPrice({
+        microLamports: pumpfunPriorityFee,
+      })
     );
 
     // Add trade instruction
@@ -464,9 +474,18 @@ export async function executePumpFunTrade(
     const tx = new Transaction();
 
     // Add compute budget instructions
+    // Use ENV.PUMPFUN_PRIORITY_FEE if set, else fallback to 50000 microLamports
+    const pumpfunPriorityFee =
+      ENV.PUMPFUN_PRIORITY_FEE &&
+      !isNaN(ENV.PUMPFUN_PRIORITY_FEE) &&
+      ENV.PUMPFUN_PRIORITY_FEE > 0
+        ? Math.floor(ENV.PUMPFUN_PRIORITY_FEE * LAMPORTS_PER_SOL)
+        : 50000;
     tx.add(
       ComputeBudgetProgram.setComputeUnitLimit({ units: 100000 }),
-      ComputeBudgetProgram.setComputeUnitPrice({ microLamports: 50000 })
+      ComputeBudgetProgram.setComputeUnitPrice({
+        microLamports: pumpfunPriorityFee,
+      })
     );
 
     // Add trade instruction

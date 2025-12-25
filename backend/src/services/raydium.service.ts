@@ -131,12 +131,14 @@ export async function executeRaydiumSwap({
   amount,
   userPublicKey,
   slippage = 1,
+  priorityFee,
 }: {
   inputMint: string;
   outputMint: string;
   amount: number | string;
   userPublicKey: string;
   slippage?: number;
+  priorityFee?: number;
 }): Promise<
   | { success: true; signature: string; simulated?: boolean }
   | { success: false; error: string }
@@ -205,12 +207,14 @@ export async function executeRaydiumSwap({
     );
 
     // Get swap transaction
+    // Pass priorityFee if provided (for future extensibility)
     const swapTransaction = await swap.getSwapTransaction(
       normalizedOutput,
       amount,
       poolKeys,
       true, // use versioned transaction
       slippage
+      // priorityFee (future: add as param to getSwapTransaction if needed)
     );
 
     // Check if simulation mode

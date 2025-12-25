@@ -89,6 +89,14 @@ export function useSocket() {
       setLastMessage({ event: "storedTokenChecker:qualified", payload: data })
     );
 
+    // On-chain Event Watcher Events
+    socket.on("onchainTokenEvent", (data) =>
+      setLastMessage({ event: "onchainTokenEvent", payload: data })
+    );
+    socket.on("onchainPoolEvent", (data) =>
+      setLastMessage({ event: "onchainPoolEvent", payload: data })
+    );
+
     return () => {
       socket.disconnect();
     };

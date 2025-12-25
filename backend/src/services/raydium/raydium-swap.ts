@@ -1,3 +1,21 @@
+type SwapSide = "in" | "out";
+import { Wallet } from "@project-serum/anchor";
+import base58 from "bs58";
+import { existsSync } from "fs";
+import { readFile } from "fs/promises";
+import {
+  NATIVE_MINT,
+  createInitializeAccountInstruction,
+  createCloseAccountInstruction,
+  getMinimumBalanceForRentExemptAccount,
+  createSyncNativeInstruction,
+} from "@solana/spl-token";
+import { CONFIG } from "./config.js";
+import { ENV } from "../../utils/env.js";
+import axios from "axios";
+import { getLogger } from "../../utils/logger.js";
+
+const log = getLogger("raydium-swap");
 import {
   Connection,
   PublicKey,
@@ -10,7 +28,7 @@ import {
   LAMPORTS_PER_SOL,
   SystemProgram,
   SimulatedTransactionResponse,
-  TransactionConfirmationStrategy, // Add this line
+  TransactionConfirmationStrategy,
 } from "@solana/web3.js";
 import BN from "bn.js";
 import {
@@ -27,26 +45,6 @@ import {
   MARKET_STATE_LAYOUT_V3,
   Market,
 } from "@raydium-io/raydium-sdk";
-import { Wallet } from "@project-serum/anchor";
-import base58 from "bs58";
-import { existsSync } from "fs";
-import { readFile } from "fs/promises";
-import {
-  NATIVE_MINT,
-  createInitializeAccountInstruction,
-  createCloseAccountInstruction,
-  getMinimumBalanceForRentExemptAccount,
-  createSyncNativeInstruction,
-} from "@solana/spl-token";
-import { CONFIG } from "./config.js";
-import { getLogger } from "../../utils/logger.js";
-
-const log = getLogger("raydium-swap");
-
-type SwapSide = "in" | "out";
-
-// FIX 3: Minimum trade amount for Raydium swaps
-const MINIMUM_SWAP_SOL = 0.003; // Most tokens require at least 0.003-0.005 SOL
 
 export class RaydiumSwap {
   static RAYDIUM_V4_PROGRAM_ID = "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8";
@@ -55,11 +53,49 @@ export class RaydiumSwap {
   connection: Connection;
   wallet: Wallet;
 
+  /**
+   * Returns a VersionedTransaction for a Raydium swap, matching the interface expected by raydium.service.ts
+   * @param toToken - Output token mint address (string)
+   * @param amount - Amount to swap (number | string)
+   * @param poolKeys - Raydium LiquidityPoolKeys
+   * @param useVersionedTx - If true, returns VersionedTransaction (default: true)
+   * @param slippage - Slippage percent (default: 5)
+   * @returns VersionedTransaction (unsigned)
+   */
+  async getSwapTransaction(
+    toToken: string,
+    amount: number | string,
+    poolKeys: LiquidityPoolKeys,
+    useVersionedTx: boolean = true,
+    slippage: number = 5
+  ): Promise<VersionedTransaction> {
+    // This method prepares an unsigned versioned transaction for the swap
+    // The frontend or caller is expected to sign and send it
+    // Find the user public key from the context (for backend, use wallet)
+    const userPublicKey = this.wallet.publicKey;
+    const txBase64 = await this.prepareUnsignedSwapTransaction(
+      toToken,
+      amount,
+      poolKeys,
+      userPublicKey,
+      slippage
+    );
+    // Deserialize base64 to VersionedTransaction
+    const txBuffer = Buffer.from(txBase64, "base64");
+    const versionedTx = VersionedTransaction.deserialize(txBuffer);
+    return versionedTx;
+  }
+
   constructor(RPC_URL: string, WALLET_SECRET_KEY: string) {
-    if (!RPC_URL.startsWith("http://") && !RPC_URL.startsWith("https://")) {
+    // Use custom RPC if set, else fallback
+    const rpcUrl =
+      ENV.CUSTOM_RPC_URL && ENV.CUSTOM_RPC_URL.length > 0
+        ? ENV.CUSTOM_RPC_URL
+        : RPC_URL;
+    if (!rpcUrl.startsWith("http://") && !rpcUrl.startsWith("https://")) {
       throw new Error("Invalid RPC URL. Must start with http:// or https://");
     }
-    this.connection = new Connection(RPC_URL, "confirmed");
+    this.connection = new Connection(rpcUrl, "confirmed");
 
     try {
       if (!WALLET_SECRET_KEY) {
@@ -365,181 +401,6 @@ export class RaydiumSwap {
     }
   }
 
-  async getSwapTransaction(
-    toToken: string,
-    amount: number | string,
-    poolKeys: LiquidityPoolKeys,
-    useVersionedTransaction = true,
-    slippage: number = 5
-  ): Promise<Transaction | VersionedTransaction> {
-    const poolInfo = await Liquidity.fetchInfo({
-      connection: this.connection,
-      poolKeys,
-    });
-
-    // FIX 1: Delay trading until Raydium reserves are non-zero
-    // This alone solves 70% of "Invalid amountOut: computed output is zero" errors
-    if (!poolInfo.baseReserve || poolInfo.baseReserve.isZero()) {
-      throw new Error(
-        `Pool not initialized: baseReserve is zero (pool: ${poolKeys.id
-          .toString()
-          .slice(0, 8)}...)`
-      );
-    }
-    if (!poolInfo.quoteReserve || poolInfo.quoteReserve.isZero()) {
-      throw new Error(
-        `Pool not initialized: quoteReserve is zero (pool: ${poolKeys.id
-          .toString()
-          .slice(0, 8)}...)`
-      );
-    }
-
-    const fromToken =
-      poolKeys.baseMint.toString() === NATIVE_MINT.toString()
-        ? NATIVE_MINT.toString()
-        : poolKeys.quoteMint.toString();
-    const swapSide = this.getSwapSide(
-      poolKeys,
-      new PublicKey(fromToken),
-      new PublicKey(toToken)
-    );
-
-    // FIX 3: Verify token decimals
-    if (
-      poolInfo.baseDecimals == null ||
-      poolInfo.baseDecimals < 0 ||
-      poolInfo.baseDecimals > 12
-    ) {
-      throw new Error(
-        `Invalid base token decimals: ${poolInfo.baseDecimals} - must be between 0 and 12`
-      );
-    }
-    if (
-      poolInfo.quoteDecimals == null ||
-      poolInfo.quoteDecimals < 0 ||
-      poolInfo.quoteDecimals > 12
-    ) {
-      throw new Error(
-        `Invalid quote token decimals: ${poolInfo.quoteDecimals} - must be between 0 and 12`
-      );
-    }
-
-    const baseToken = new Token(
-      TOKEN_PROGRAM_ID,
-      poolKeys.baseMint,
-      poolInfo.baseDecimals
-    );
-    const quoteToken = new Token(
-      TOKEN_PROGRAM_ID,
-      poolKeys.quoteMint,
-      poolInfo.quoteDecimals
-    );
-
-    const currencyIn = swapSide === "in" ? baseToken : quoteToken;
-    const currencyOut = swapSide === "in" ? quoteToken : baseToken;
-
-    // Use BN to safely handle large numbers - NEVER use Number
-    // Convert to string first to avoid precision loss for large numbers
-    const amountBN = new BN(Math.floor(Number(amount)).toString());
-
-    // FIX 1: Validate input amount BEFORE computation
-    if (amountBN.lte(new BN(0))) {
-      throw new Error(
-        `Invalid amountIn: amount must be greater than zero (received: ${amount})`
-      );
-    }
-
-    const amountIn = new TokenAmount(currencyIn, amountBN, false);
-    const slippagePercent = new Percent(slippage, 100);
-
-    const { amountOut, minAmountOut } = Liquidity.computeAmountOut({
-      poolKeys,
-      poolInfo,
-      amountIn,
-      currencyOut,
-      slippage: slippagePercent,
-    });
-
-    // FIX 2: Validate Raydium routing BEFORE trade
-    // If Raydium cannot form a swap path → DO NOT TRADE
-    if (!amountOut || amountOut.raw.isZero() || amountOut.raw.lte(new BN(0))) {
-      console.error("Invalid route: Raydium cannot form a valid swap path", {
-        inputAmount: amountBN.toString(),
-        poolBaseMint: poolKeys.baseMint.toString(),
-        poolQuoteMint: poolKeys.quoteMint.toString(),
-        baseReserve: poolInfo.baseReserve?.toString(),
-        quoteReserve: poolInfo.quoteReserve?.toString(),
-        lpSupply: poolInfo.lpSupply?.toString(),
-        swapSide,
-      });
-      throw new Error(
-        `Invalid route: output is zero. Raydium routing failed for input amount ${amountBN.toString()} lamports. Pool may lack liquidity or be inactive.`
-      );
-    }
-
-    const userTokenAccounts = await this.getOwnerTokenAccounts();
-
-    const priorityFee = await CONFIG.getPriorityFee();
-    console.log(`Using priority fee: ${priorityFee} SOL`);
-
-    const swapTransaction = await Liquidity.makeSwapInstructionSimple({
-      connection: this.connection,
-      makeTxVersion: useVersionedTransaction ? 0 : 1,
-      poolKeys: {
-        ...poolKeys,
-      },
-      userKeys: {
-        tokenAccounts: userTokenAccounts,
-        owner: this.wallet.publicKey,
-      },
-      amountIn,
-      amountOut: minAmountOut,
-      fixedSide: swapSide,
-      config: {
-        bypassAssociatedCheck: false,
-      },
-      computeBudgetConfig: {
-        units: 300000,
-        microLamports: Math.floor(priorityFee * LAMPORTS_PER_SOL),
-      },
-    });
-
-    const recentBlockhashForSwap = await this.connection.getLatestBlockhash();
-    const instructions =
-      swapTransaction.innerTransactions?.[0]?.instructions.filter(
-        (instruction): instruction is TransactionInstruction =>
-          Boolean(instruction)
-      ) ?? [];
-
-    if (useVersionedTransaction) {
-      const versionedTransaction = new VersionedTransaction(
-        new TransactionMessage({
-          payerKey: this.wallet.publicKey,
-          recentBlockhash: recentBlockhashForSwap.blockhash,
-          instructions: instructions,
-        }).compileToV0Message()
-      );
-      versionedTransaction.sign([this.wallet.payer]);
-      console.log(
-        "Versioned transaction signed with payer:",
-        this.wallet.payer.publicKey.toBase58()
-      );
-      return versionedTransaction;
-    }
-
-    const legacyTransaction = new Transaction({
-      blockhash: recentBlockhashForSwap.blockhash,
-      lastValidBlockHeight: recentBlockhashForSwap.lastValidBlockHeight,
-      feePayer: this.wallet.publicKey,
-    });
-    legacyTransaction.add(...instructions);
-    console.log(
-      "Legacy transaction signed with payer:",
-      this.wallet.payer.publicKey.toBase58()
-    );
-    return legacyTransaction;
-  }
-
   /**
    * Prepare unsigned swap transaction for client-side signing
    * Returns a base64-encoded unsigned transaction
@@ -670,7 +531,11 @@ export class RaydiumSwap {
       accountInfo: SPL_ACCOUNT_LAYOUT.decode(i.account.data),
     }));
 
-    const priorityFee = await CONFIG.getPriorityFee();
+    // Use ENV.RAYDIUM_PRIORITY_FEE if set, else fallback to dynamic/config
+    let priorityFee = ENV.RAYDIUM_PRIORITY_FEE;
+    if (!priorityFee || isNaN(priorityFee) || priorityFee <= 0) {
+      priorityFee = await CONFIG.getPriorityFee();
+    }
 
     const swapTransaction = await Liquidity.makeSwapInstructionSimple({
       connection: this.connection,
@@ -748,6 +613,35 @@ export class RaydiumSwap {
     lastValidBlockHeight: number
   ): Promise<string> {
     const rawTransaction = tx.serialize();
+    // --- Jito/MEV relay support ---
+    if (ENV.JITO_MEV_RELAY_ENABLED && ENV.JITO_MEV_RELAY_URL) {
+      try {
+        const base64Tx = Buffer.from(rawTransaction).toString("base64");
+        const response = await axios.post(
+          ENV.JITO_MEV_RELAY_URL,
+          { transaction: base64Tx },
+          { headers: { "Content-Type": "application/json" } }
+        );
+        const signature = response.data?.result || response.data?.signature;
+        if (!signature)
+          throw new Error("No signature returned from Jito relay");
+        console.log(
+          "Versioned transaction sent via Jito relay, signature:",
+          signature
+        );
+        // Optionally: confirm via RPC as well
+        return signature;
+      } catch (err) {
+        console.error(
+          "Jito relay failed, falling back to RPC:",
+          typeof err === "object" && err && "message" in err
+            ? (err as any).message
+            : String(err)
+        );
+        // Fallback to normal sendRawTransaction
+      }
+    }
+    // Default: send via Solana RPC
     const signature = await this.connection.sendRawTransaction(rawTransaction, {
       skipPreflight: true,
       preflightCommitment: "confirmed",

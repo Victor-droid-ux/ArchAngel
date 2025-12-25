@@ -9,6 +9,8 @@ import { Connection, PublicKey, Commitment } from "@solana/web3.js";
 import { hasSufficientBalance } from "./solana.service.js";
 import { validateTradeOpportunity } from "./tradeValidation.service.js";
 import { observeMarketBehavior } from "./marketBehavior.service.js";
+import strategyEngine from "../strategies/index.js";
+import { getTokenHistory } from "../strategies/utils.js";
 import { canExecuteTrade } from "./riskManagement.service.js";
 import {
   executeFirstTranche,
@@ -18,6 +20,24 @@ import {
 } from "./trancheBuyer.service.js";
 
 const LOG = getLogger("autoBuyer");
+import { ENV } from "../utils/env.js";
+
+// Returns true if mint is in list (case-insensitive)
+function isInList(mint: string, list: string[]): boolean {
+  return list.some((addr) => addr.trim().toLowerCase() === mint.toLowerCase());
+}
+
+// Returns true if token is within the allowed launch window
+function isWithinLaunchWindow(token: any): boolean {
+  if (!token || !token.pairCreatedAt) return true; // If no launch time, allow
+  const now = Date.now();
+  const launch = Number(token.pairCreatedAt);
+  const ageSec = (now - launch) / 1000;
+  return (
+    ageSec >= ENV.MIN_SECONDS_SINCE_LAUNCH &&
+    ageSec <= ENV.MAX_SECONDS_SINCE_LAUNCH
+  );
+}
 
 const SOL_MINT = "So11111111111111111111111111111111111111112";
 
@@ -58,16 +78,82 @@ async function getDecimals(mint: string): Promise<number> {
    AUTO BUY EXECUTOR (triggered by token discovery)
 ------------------------------------------------------------------------ */
 export async function registerAutoBuyCandidate(io: Server, token: any) {
+  // === Blacklist/Whitelist Filtering ===
+  const mint = token.mint;
+  if (!mint) return;
+  if (ENV.TOKEN_BLACKLIST.length && isInList(mint, ENV.TOKEN_BLACKLIST)) {
+    LOG.warn({ mint }, "⛔ Skipping blacklisted token");
+    io.emit("tradeError", {
+      type: "blacklist",
+      mint,
+      reason: "Token is blacklisted",
+      message: "Token is blacklisted",
+    });
+    return;
+  }
+  if (ENV.TOKEN_WHITELIST.length && !isInList(mint, ENV.TOKEN_WHITELIST)) {
+    LOG.warn({ mint }, "⛔ Skipping non-whitelisted token");
+    io.emit("tradeError", {
+      type: "whitelist",
+      mint,
+      reason: "Token is not whitelisted",
+      message: "Token is not whitelisted",
+    });
+    return;
+  }
+
+  // === Time-based Entry Filtering ===
+  if (!isWithinLaunchWindow(token)) {
+    LOG.warn(
+      { mint },
+      `⏳ Skipping: not within launch window (${ENV.MIN_SECONDS_SINCE_LAUNCH}-${ENV.MAX_SECONDS_SINCE_LAUNCH}s)`
+    );
+    io.emit("tradeError", {
+      type: "launch_window",
+      mint,
+      reason: `Not within launch window (${ENV.MIN_SECONDS_SINCE_LAUNCH}-${ENV.MAX_SECONDS_SINCE_LAUNCH}s)`,
+      message: `Not within launch window (${ENV.MIN_SECONDS_SINCE_LAUNCH}-${ENV.MAX_SECONDS_SINCE_LAUNCH}s)`,
+    });
+    return;
+  }
+
   try {
-    const mint = token.mint;
-    if (!mint) return;
+    // --- STRATEGY ENGINE: Evaluate all strategies before validation ---
+    LOG.info({ mint }, "⚡ Evaluating trading strategies...");
+    const { priceHistory, liquidityHistory, volumeHistory } =
+      await getTokenHistory(mint);
+    const strategyContext = {
+      mint,
+      priceHistory,
+      liquidityHistory,
+      volumeHistory,
+      currentPrice: token.priceSol ?? 0,
+      currentLiquidity: token.liquiditySOL ?? token.liquidity ?? 0,
+      currentVolume: token.volume24h ?? 0,
+      tokenMeta: token,
+    };
+    const strategyResult = await strategyEngine.getBestSignal(strategyContext);
+    if (!strategyResult || !strategyResult.shouldBuy) {
+      LOG.info(
+        { mint, reason: strategyResult?.reason },
+        "⏭️ No strategy signaled a buy"
+      );
+      io.emit("tradeError", {
+        type: "strategy_blocked",
+        mint,
+        reason: strategyResult?.reason || "No strategy signaled a buy",
+        message: strategyResult?.reason || "No strategy signaled a buy",
+      });
+      return;
+    }
+    LOG.info(
+      { mint, strategy: strategyResult.reason },
+      "✅ Strategy signaled a buy, proceeding to validation..."
+    );
 
+    // --- Continue with existing validation pipeline ---
     LOG.info({ mint }, "🔍 Validating token with 3 CRITICAL CONDITIONS...");
-
-    // ✨ NEW: Validate with 3 critical conditions
     const validation = await validateTradeOpportunity(mint);
-
-    // Emit validation result to frontend for monitoring (with token metadata)
     io.emit("validationResult", {
       ...validation,
       token: {
@@ -80,7 +166,6 @@ export async function registerAutoBuyCandidate(io: Server, token: any) {
         lifecycleStage: token.lifecycleStage,
       },
     });
-
     if (!validation.approved) {
       LOG.info(
         {

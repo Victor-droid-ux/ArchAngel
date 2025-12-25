@@ -35,6 +35,10 @@ import { ENV } from "./utils/env.js";
 import { raydiumPoolListener } from "./services/raydiumPoolListener.service.js";
 import storedTokenChecker from "./services/storedTokenChecker.service.js";
 
+import onchainEventWatcher from "./services/onchainEventWatcher.service.js";
+import { validateTokenLifecycle } from "./services/tokenLifecycle.service.js";
+import { registerAutoBuyCandidate } from "./services/autoBuyer.service.js";
+
 const log = getLogger("index");
 
 (async () => {
@@ -161,6 +165,60 @@ const log = getLogger("index");
     });
     log.info("🎧 Raydium pool listener enabled with real-time events");
   }
+
+  // === On-chain Event Watcher Integration ===
+  // Listen for new SPL token mints
+  onchainEventWatcher.listenForInitializeMint(async (mint, slot) => {
+    log.info(
+      `🔔 [OnChain] New SPL token mint detected: ${mint} at slot ${slot}`
+    );
+    try {
+      const lifecycle = await validateTokenLifecycle(mint);
+      io.emit("onchainTokenEvent", { mint, slot, lifecycle });
+      if (lifecycle.isTradable) {
+        // Compose minimal token object for auto-buyer
+        const token = {
+          mint,
+          lifecycleStage: lifecycle.stage,
+          isPumpFun: lifecycle.isPumpFun,
+          hasGraduated: lifecycle.hasGraduated,
+          hasLiquidity: lifecycle.hasLiquidity,
+          liquiditySOL: lifecycle.liquiditySOL,
+          poolAddress: lifecycle.poolAddress,
+        };
+        await registerAutoBuyCandidate(io, token);
+      }
+    } catch (err) {
+      log.error(`On-chain mint event processing failed: ${err}`);
+    }
+  });
+
+  // Listen for new pool events (Raydium, Orca, Meteora, Pump.fun, etc.)
+  onchainEventWatcher.listenForPoolEvents(async (info) => {
+    log.info(
+      `🔔 [OnChain] New pool event: program=${info.programId}, pool=${info.pool}, slot=${info.slot}`
+    );
+    try {
+      // Try to extract mint from pool address if possible (may require enhancement)
+      // For now, just run lifecycle validation on the pool address
+      const lifecycle = await validateTokenLifecycle(info.pool);
+      io.emit("onchainPoolEvent", { ...info, lifecycle });
+      if (lifecycle.isTradable) {
+        const token = {
+          mint: info.pool,
+          lifecycleStage: lifecycle.stage,
+          isPumpFun: lifecycle.isPumpFun,
+          hasGraduated: lifecycle.hasGraduated,
+          hasLiquidity: lifecycle.hasLiquidity,
+          liquiditySOL: lifecycle.liquiditySOL,
+          poolAddress: lifecycle.poolAddress,
+        };
+        await registerAutoBuyCandidate(io, token);
+      }
+    } catch (err) {
+      log.error(`On-chain pool event processing failed: ${err}`);
+    }
+  });
 
   // Start stored token checker for periodic re-evaluation
   if (process.env.STORED_TOKEN_CHECKER_ENABLED === "true") {

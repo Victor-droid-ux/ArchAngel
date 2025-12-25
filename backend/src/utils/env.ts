@@ -12,7 +12,7 @@ export const ENV = {
   FRONTEND_URL:
     process.env.FRONTEND_URL ??
     process.env.AZURE_FRONTEND_URL ??
-    "http://localhost:3000",
+    "http://163.245.201.188",
 
   // DB
   MONGO_URI: process.env.MONGO_URI ?? "",
@@ -42,4 +42,35 @@ export const ENV = {
   AUTO_TRADE_PERCENT_OF_BALANCE: Number(
     process.env.AUTO_TRADE_PERCENT_OF_BALANCE ?? "0.02"
   ), // 2%
+
+  // Advanced execution tuning
+  RAYDIUM_PRIORITY_FEE: Number(process.env.RAYDIUM_PRIORITY_FEE ?? "0.00003"), // in SOL
+  PUMPFUN_PRIORITY_FEE: Number(process.env.PUMPFUN_PRIORITY_FEE ?? "0.00005"), // in SOL
+
+  // Custom RPC and bundle/pre-sign options
+  CUSTOM_RPC_URL: process.env.CUSTOM_RPC_URL ?? "",
+  ENABLE_BUNDLE_PRESIGN: process.env.ENABLE_BUNDLE_PRESIGN === "true",
+
+  // Jito/MEV relay support
+  JITO_MEV_RELAY_ENABLED: process.env.JITO_MEV_RELAY_ENABLED === "true",
+  JITO_MEV_RELAY_URL: process.env.JITO_MEV_RELAY_URL ?? "",
+
+  // Blacklist/Whitelist (comma-separated lists)
+  TOKEN_BLACKLIST: (process.env.TOKEN_BLACKLIST ?? "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean),
+  TOKEN_WHITELIST: (process.env.TOKEN_WHITELIST ?? "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean),
+
+  // Time-based entry filter (seconds)
+  MIN_SECONDS_SINCE_LAUNCH: Number(
+    process.env.MIN_SECONDS_SINCE_LAUNCH ?? "10"
+  ),
+  MAX_SECONDS_SINCE_LAUNCH: Number(
+    process.env.MAX_SECONDS_SINCE_LAUNCH ?? "60"
+  ),
+
 };

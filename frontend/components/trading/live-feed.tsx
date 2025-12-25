@@ -61,70 +61,106 @@ export default function LiveFeed() {
     });
   }, [logs]);
 
-  // Handle incoming socket trading events
+  // Handle incoming socket trading and onchain events
   useEffect(() => {
     if (!lastMessage) return;
 
     const { event, payload } = lastMessage;
-    if (!["tradeFeed", "tradeLog", "trade:update"].includes(event)) return;
-
     const now = new Date().toLocaleTimeString("en-GB", { hour12: false });
 
-    const type =
-      payload?.type === "buy" || payload?.type === "sell"
-        ? payload.type
-        : "info";
+    // Trading events (existing logic)
+    if (["tradeFeed", "tradeLog", "trade:update"].includes(event)) {
+      const type =
+        payload?.type === "buy" || payload?.type === "sell"
+          ? payload.type
+          : "info";
 
-    // Build enhanced message
-    let message = payload?.message ?? `${type.toUpperCase()} executed`;
+      // Build enhanced message
+      let message = payload?.message ?? `${type.toUpperCase()} executed`;
 
-    // Tranche buy messages
-    if (payload?.tranche) {
-      message = `${type.toUpperCase()} ${payload.tranche}`;
+      // Tranche buy messages
+      if (payload?.tranche) {
+        message = `${type.toUpperCase()} ${payload.tranche}`;
+      }
+
+      // Tiered profit messages
+      if (payload?.reason === "tiered_profit") {
+        message = `SELL ${payload.sellPercent}% at ${payload.exitReason} (${payload.remainingPct}% left)`;
+      }
+
+      // Emergency exit messages
+      if (payload?.emergency || payload?.reason === "emergency_exit") {
+        message = `🚨 EMERGENCY: ${payload.exitReason || "Critical exit"}`;
+      }
+
+      // Trailing stop final
+      if (payload?.reason === "trailing_stop_final") {
+        message = `Trailing Stop (Final 10%): ${payload.exitReason || ""}`;
+      }
+
+      const incoming: TradeLog = {
+        id: crypto.randomUUID(),
+        time: now,
+        message,
+        type: payload?.emergency ? "sell" : type,
+        pnl: typeof payload?.pnl === "number" ? payload.pnl : undefined,
+        amount: payload?.amount ?? 0,
+        signature: payload?.signature ?? null,
+      };
+
+      setLogs((prev) => [...prev.slice(-299), incoming]);
+
+      if (typeof incoming.pnl === "number") {
+        const profitPercent = incoming.pnl * 100;
+        const profitSol = (incoming.amount ?? 0) * incoming.pnl;
+
+        updateStats((prev) => ({
+          totalProfitSol: prev.totalProfitSol + profitSol,
+          totalProfitPercent: prev.totalProfitPercent + profitPercent,
+          tradeVolumeSol: prev.tradeVolumeSol + (incoming.amount ?? 0),
+          openTrades:
+            type === "buy"
+              ? prev.openTrades + 1
+              : type === "sell"
+              ? Math.max(prev.openTrades - 1, 0)
+              : prev.openTrades,
+        }));
+      }
+      return;
     }
 
-    // Tiered profit messages
-    if (payload?.reason === "tiered_profit") {
-      message = `SELL ${payload.sellPercent}% at ${payload.exitReason} (${payload.remainingPct}% left)`;
+    // Onchain events
+    if (event === "onchainTokenEvent") {
+      const { mint, slot, lifecycle } = payload || {};
+      const message =
+        `🆕 New SPL Token Minted: ${mint} (slot ${slot})` +
+        (lifecycle?.isTradable ? " — Tradable" : "");
+      setLogs((prev) => [
+        ...prev.slice(-299),
+        {
+          id: crypto.randomUUID(),
+          time: now,
+          message,
+          type: "info",
+        },
+      ]);
+      return;
     }
-
-    // Emergency exit messages
-    if (payload?.emergency || payload?.reason === "emergency_exit") {
-      message = `🚨 EMERGENCY: ${payload.exitReason || "Critical exit"}`;
-    }
-
-    // Trailing stop final
-    if (payload?.reason === "trailing_stop_final") {
-      message = `Trailing Stop (Final 10%): ${payload.exitReason || ""}`;
-    }
-
-    const incoming: TradeLog = {
-      id: crypto.randomUUID(),
-      time: now,
-      message,
-      type: payload?.emergency ? "sell" : type,
-      pnl: typeof payload?.pnl === "number" ? payload.pnl : undefined,
-      amount: payload?.amount ?? 0,
-      signature: payload?.signature ?? null,
-    };
-
-    setLogs((prev) => [...prev.slice(-299), incoming]);
-
-    if (typeof incoming.pnl === "number") {
-      const profitPercent = incoming.pnl * 100;
-      const profitSol = (incoming.amount ?? 0) * incoming.pnl;
-
-      updateStats((prev) => ({
-        totalProfitSol: prev.totalProfitSol + profitSol,
-        totalProfitPercent: prev.totalProfitPercent + profitPercent,
-        tradeVolumeSol: prev.tradeVolumeSol + (incoming.amount ?? 0),
-        openTrades:
-          type === "buy"
-            ? prev.openTrades + 1
-            : type === "sell"
-            ? Math.max(prev.openTrades - 1, 0)
-            : prev.openTrades,
-      }));
+    if (event === "onchainPoolEvent") {
+      const { pool, programId, dex, slot, lifecycle } = payload || {};
+      const message =
+        `🚀 New Pool Detected: ${pool} [${dex || programId}] (slot ${slot})` +
+        (lifecycle?.isTradable ? " — Tradable" : "");
+      setLogs((prev) => [
+        ...prev.slice(-299),
+        {
+          id: crypto.randomUUID(),
+          time: now,
+          message,
+          type: "info",
+        },
+      ]);
+      return;
     }
   }, [lastMessage, stats, updateStats]);
 
